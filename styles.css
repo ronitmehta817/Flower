@@ -1,0 +1,169 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: auto; overflow-x: hidden; }
+
+body {
+  background: #04101d;
+}
+
+/* the scene layers are fixed; this spacer gives scroll range to drive bloom */
+.scroll-spacer { height: 420vh; pointer-events: none; }
+
+.scroll-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 4vh;
+  transform: translateX(-50%);
+  z-index: 6;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  color: rgba(231, 194, 122, 0.8);
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  animation: hintPulse 2.4s ease-in-out infinite;
+}
+@keyframes hintPulse { 0%,100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+.scroll-hint.hide { animation: none; opacity: 0; transition: opacity 0.5s ease; }
+
+.stage {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* floating notes */
+.notes-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.note {
+  position: absolute;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: clamp(0.7rem, 1.3vw, 0.95rem);
+  letter-spacing: 0.02em;
+  color: rgba(240, 252, 255, 0.9);
+  white-space: nowrap;
+  opacity: 0;
+  text-shadow: 0 1px 12px rgba(20, 60, 80, 0.55), 0 0 6px rgba(150, 225, 235, 0.35);
+  animation:
+    noteIn 1.2s ease forwards,
+    floatNote var(--dur, 9s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s), var(--delay, 0s);
+}
+
+.note::before {
+  content: "❀";
+  margin-right: 0.4em;
+  font-style: normal;
+  opacity: 0.55;
+  font-size: 0.8em;
+}
+
+@keyframes noteIn {
+  to { opacity: 1; }
+}
+
+@keyframes floatNote {
+  0%   { transform: translate(0, 0) rotate(var(--rot, 0deg)); }
+  50%  { transform: translate(var(--dx, 8px), var(--dy, -12px)) rotate(var(--rot, 0deg)); }
+  100% { transform: translate(0, 0) rotate(var(--rot, 0deg)); }
+}
+
+.sky-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  z-index: 0;
+}
+
+.water-canvas {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  z-index: 1;
+  image-rendering: auto;
+}
+
+.rays-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 3;
+  pointer-events: none;
+  display: block;
+  mix-blend-mode: screen; /* beams add light to the scene */
+}
+
+.lotus-layer { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+.lotus-layer canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+}
+
+/* replay button */
+.replay {
+  position: absolute;
+  bottom: 5vh;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.7rem 1.5rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  color: #e7c27a;
+  background: rgba(231, 194, 122, 0.06);
+  border: 1px solid rgba(231, 194, 122, 0.45);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  transition: opacity 0.6s ease, transform 0.6s ease, background 0.3s ease,
+    border-color 0.3s ease;
+}
+.replay.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+.replay:hover {
+  background: rgba(231, 194, 122, 0.16);
+  border-color: rgba(231, 194, 122, 0.8);
+}
+.replay-icon {
+  font-style: normal;
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+.art path {
+  fill: none;
+  stroke: #e7c27a;                 /* warm gold ink */
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(231, 194, 122, 0.35));
+}

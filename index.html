@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Floré</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="stage">
+    <canvas id="water" class="water-canvas"></canvas>
+    <div id="lotus" class="lotus-layer"></div>
+    <div id="notes" class="notes-layer"></div>
+  </main>
+  <div id="hint" class="scroll-hint">scroll to bloom &#8595;</div>
+  <div class="scroll-spacer" aria-hidden="true"></div>
+  <script src="notes.js"></script>
+  <script type="importmap">
+    {"imports" : {"three": "./vendor/three.module.js"}
+  </script>
+  <script type="module" src="script.js"></script>
+</body>
+</html>
