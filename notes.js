@@ -1,7 +1,7 @@
 // Edit these small notes — they float gently around the lotus.
 // Add, remove, or change any line. Keep them short for the best look.
 window.FLOWER_NOTES = [
-  "You're my sweetest obsession".
+  "You're my sweetest obsession",
   "I burn for you my love",
   "Kiss me like forever",
   "You're all I crave",
