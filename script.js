@@ -10,7 +10,7 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const CAP = 720;
 const DAMP = 0.965;
 const REFRACT = 0.30;
-const MAX_OFF = 14;
+const MAX_OFF = 20; // room for big ocean swells in the foreground
 
 function buildOcean(w, h) {
   const wc = document.createElement("canvas");
@@ -66,6 +66,7 @@ let SKW = 0, SKH = 0;
 const BG_POS = [0, 0.4, 0.52, 0.62, 1];
 // sunny clear-day sky: deep blue up top -> bright pale glow at the horizon
 const SKY_C = [[58, 132, 206], [120, 184, 228], [214, 238, 248], [156, 206, 232], [96, 162, 206]];
+const SUNSET_C = [[52, 70, 120], [138, 120, 150], [255, 196, 138], [246, 150, 96], [212, 120, 82]];
 const UND_C = [[18, 60, 78], [10, 40, 56], [7, 30, 44], [5, 20, 32], [2, 9, 16]];
 const lerpC = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
@@ -79,23 +80,28 @@ function backdropResize() {
 }
 
 // uw = 0 -> sky (with clouds + horizon glow); uw = 1 -> murky underwater depth
-function drawBackdrop(uw) {
+function drawBackdrop(uw, gh) {
   const g = skctx.createLinearGradient(0, 0, 0, SKH);
   for (let i = 0; i < BG_POS.length; i++) {
-    const c = lerpC(SKY_C[i], UND_C[i], uw);
+    const day = lerpC(SKY_C[i], SUNSET_C[i], gh); // day -> golden hour
+    const c = lerpC(day, UND_C[i], uw);
     g.addColorStop(BG_POS[i], `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`);
   }
   skctx.fillStyle = g;
   skctx.fillRect(0, 0, SKW, SKH);
   const ca = 1 - uw;
   if (ca > 0.02) {
-    // the sun: warm glow with a bright core (upper-right)
-    const sx = SKW * 0.74, sy = SKH * 0.2, sr = Math.min(SKW, SKH) * 0.42;
+    // the sun: high & white by day, sinking low & orange toward golden hour
+    const sx = SKW * 0.74;
+    const sy = SKH * (0.2 + 0.26 * gh);
+    const sr = Math.min(SKW, SKH) * (0.42 + 0.12 * gh);
+    const core = lerpC([255, 250, 225], [255, 178, 110], gh);
+    const midc = lerpC([255, 240, 195], [255, 150, 92], gh);
     const sg = skctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-    sg.addColorStop(0, `rgba(255,250,225,${(0.95 * ca).toFixed(3)})`);
-    sg.addColorStop(0.12, `rgba(255,244,200,${(0.85 * ca).toFixed(3)})`);
-    sg.addColorStop(0.4, `rgba(255,238,190,${(0.25 * ca).toFixed(3)})`);
-    sg.addColorStop(1, "rgba(255,238,190,0)");
+    sg.addColorStop(0, `rgba(${core[0]|0},${core[1]|0},${core[2]|0},${(0.95 * ca).toFixed(3)})`);
+    sg.addColorStop(0.12, `rgba(${midc[0]|0},${midc[1]|0},${midc[2]|0},${(0.85 * ca).toFixed(3)})`);
+    sg.addColorStop(0.4, `rgba(${midc[0]|0},${midc[1]|0},${midc[2]|0},${(0.25 * ca).toFixed(3)})`);
+    sg.addColorStop(1, `rgba(${midc[0]|0},${midc[1]|0},${midc[2]|0},0)`);
     skctx.fillStyle = sg;
     skctx.fillRect(0, 0, SKW, SKH);
 
@@ -190,6 +196,99 @@ function drawRays(uw, t, waterTopFrac, sunXFrac) {
 }
 raysResize();
 
+// life layer: drifting / falling petals + a couple of dragonflies
+const lifeCanvas = document.createElement("canvas");
+lifeCanvas.className = "life-canvas";
+document.querySelector(".stage").appendChild(lifeCanvas);
+const lctx = lifeCanvas.getContext("2d");
+let LW = 0, LH = 0;
+const petalsAir = [];
+const flies = [];
+function lifeResize() {
+  LW = lifeCanvas.width = window.innerWidth;
+  LH = lifeCanvas.height = window.innerHeight;
+}
+function lifeInit() {
+  petalsAir.length = 0;
+  for (let i = 0; i < 20; i++) {
+    petalsAir.push({
+      x: Math.random(), y: Math.random(), // fractions
+      vy: 0.0006 + Math.random() * 0.0012,
+      vx: (Math.random() - 0.5) * 0.0006,
+      size: 6 + Math.random() * 10,
+      rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.03,
+      sw: 0.4 + Math.random() * 0.8, ph: Math.random() * 6.28,
+      hue: 330 + Math.random() * 20, a: 0.45 + Math.random() * 0.4,
+    });
+  }
+  flies.length = 0;
+  for (let i = 0; i < 3; i++) {
+    flies.push({
+      x: Math.random(), y: 0.3 + Math.random() * 0.4,
+      vx: (0.0008 + Math.random() * 0.0010) * (Math.random() < 0.5 ? -1 : 1),
+      sp: 1.5 + Math.random() * 1.5, ph: Math.random() * 6.28,
+      scale: 0.8 + Math.random() * 0.7,
+    });
+  }
+}
+function drawPetalShape(s) {
+  lctx.beginPath();
+  lctx.moveTo(0, -s);
+  lctx.bezierCurveTo(s * 0.7, -s * 0.5, s * 0.5, s * 0.6, 0, s);
+  lctx.bezierCurveTo(-s * 0.5, s * 0.6, -s * 0.7, -s * 0.5, 0, -s);
+  lctx.fill();
+}
+function drawFly(d, t) {
+  d.x += d.vx;
+  if (d.x < -0.05) d.x = 1.05;
+  if (d.x > 1.05) d.x = -0.05;
+  const px = d.x * LW;
+  const py = (d.y + Math.sin(t * d.sp + d.ph) * 0.03) * LH;
+  const wf = 0.55 + 0.45 * Math.abs(Math.sin(t * 26 + d.ph)); // wing flutter
+  lctx.save();
+  lctx.translate(px, py);
+  lctx.scale((d.vx < 0 ? -1 : 1) * d.scale, d.scale);
+  lctx.globalAlpha = 0.55;
+  lctx.strokeStyle = "rgba(35,55,65,0.9)";
+  lctx.lineWidth = 1.6;
+  lctx.beginPath(); lctx.moveTo(-9, 0); lctx.lineTo(13, 0); lctx.stroke(); // body
+  lctx.fillStyle = "rgba(190,215,228,0.4)";
+  for (const wx of [1, 4]) {
+    for (const wy of [-1, 1]) {
+      lctx.save();
+      lctx.translate(wx, 0);
+      lctx.rotate(wy * 0.35 * wf);
+      lctx.beginPath();
+      lctx.ellipse(0, wy * 5 * wf, 9, 3, 0, 0, Math.PI * 2);
+      lctx.fill();
+      lctx.restore();
+    }
+  }
+  lctx.restore();
+  lctx.globalAlpha = 1;
+}
+function drawLife(t) {
+  lctx.clearRect(0, 0, LW, LH);
+  for (const p of petalsAir) {
+    p.y += p.vy; p.x += p.vx;
+    if (p.y > 1.05) { p.y = -0.05; p.x = Math.random(); }
+    p.rot += p.vr;
+    const px = p.x * LW + Math.sin(t * p.sw + p.ph) * 12;
+    const py = p.y * LH;
+    lctx.save();
+    lctx.translate(px, py);
+    lctx.rotate(p.rot + Math.sin(t * p.sw + p.ph) * 0.3);
+    lctx.globalAlpha = p.a;
+    lctx.fillStyle = `hsl(${p.hue},80%,72%)`;
+    drawPetalShape(p.size);
+    lctx.restore();
+  }
+  lctx.globalAlpha = 1;
+  for (const d of flies) drawFly(d, t);
+}
+lifeResize();
+lifeInit();
+
 const waterCanvas = document.getElementById("water");
 const wctx = waterCanvas.getContext("2d");
 const srcCanvas = document.createElement("canvas");
@@ -216,11 +315,18 @@ function waterRebuild() {
 
 // continuous traveling swell (cheap, separable) added on top of the ripples
 function fillWaves(t) {
+  // layered swell: big slow rollers + medium + small chop = ocean motion
   for (let x = 0; x < WW; x++) {
-    waveRow[x] = 3.2 * Math.sin(x * 0.045 + t * 1.7) + 2.0 * Math.sin(x * 0.017 - t * 1.0 + 1.3);
+    waveRow[x] =
+      4.2 * Math.sin(x * 0.028 + t * 1.2) +
+      2.4 * Math.sin(x * 0.013 - t * 0.7 + 1.3) +
+      1.3 * Math.sin(x * 0.075 + t * 2.1);
   }
   for (let y = 0; y < WH; y++) {
-    waveCol[y] = 3.2 * Math.sin(y * 0.05 + t * 1.4) + 2.0 * Math.sin(y * 0.02 - t * 0.8 + 0.6);
+    waveCol[y] =
+      4.2 * Math.sin(y * 0.032 + t * 1.0) +
+      2.4 * Math.sin(y * 0.015 - t * 0.6 + 0.6) +
+      1.3 * Math.sin(y * 0.082 + t * 1.8);
   }
 }
 
@@ -251,10 +357,14 @@ function waterStep() {
 function waterRefract() {
   const s = wSrc.data, d = wOut.data;
   for (let y = 1; y < WH - 1; y++) {
+    // perspective: as the camera lowers (camP), waves grow toward the
+    // foreground (bottom) and flatten toward the horizon (top) -> ocean look
+    let persp = 1 + camP * ((y / WH) * 2.6 - 0.7);
+    if (persp < 0) persp = 0;
     let i = y * WW + 1;
     for (let x = 1; x < WW - 1; x++, i++) {
-      let xo = (wPrev[i - 1] - wPrev[i + 1]) * REFRACT + waveCol[y];
-      let yo = (wPrev[i - WW] - wPrev[i + WW]) * REFRACT + waveRow[x];
+      let xo = (wPrev[i - 1] - wPrev[i + 1]) * REFRACT + waveCol[y] * persp;
+      let yo = (wPrev[i - WW] - wPrev[i + WW]) * REFRACT + waveRow[x] * persp;
       if (xo > MAX_OFF) xo = MAX_OFF; else if (xo < -MAX_OFF) xo = -MAX_OFF;
       if (yo > MAX_OFF) yo = MAX_OFF; else if (yo < -MAX_OFF) yo = -MAX_OFF;
       let sx = x + (xo | 0), sy = y + (yo | 0);
@@ -307,13 +417,16 @@ document.getElementById("lotus").appendChild(renderer.domElement);
 const projV = new THREE.Vector3();
 let sunX = 0.5; // screen-x (0..1) where the rays enter — kept in a gap
 
-scene.add(new THREE.HemisphereLight(0xcfeaff, 0x16323a, 1.05));
-const sun = new THREE.DirectionalLight(0xfff3d6, 1.5); // warm sunlight
+const hemi = new THREE.HemisphereLight(0xcfeaff, 0x16323a, 1.05);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff3d6, 1.5); // sunlight
 sun.position.set(7, 10, 4);
 scene.add(sun);
 const fill = new THREE.PointLight(0xffd9a8, 0.45, 30);
 fill.position.set(-4, 3, 5);
 scene.add(fill);
+const SUN_DAY = new THREE.Color(0xfff3d6), SUN_SET = new THREE.Color(0xff9a4d);
+const HEMI_DAY = new THREE.Color(0xcfeaff), HEMI_SET = new THREE.Color(0xffd2a6);
 
 function makePetalGeometry() {
   const s = new THREE.Shape();
@@ -326,7 +439,7 @@ function makePetalGeometry() {
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i);
     p.setZ(i, -0.18 * x * x - 0.06 * Math.sin(y * Math.PI)); // gentle cup
-    const tip = 0.55 + 0.45 * clamp(y, 0, 1); // tips brighter
+    const tip = 0.42 + 0.85 * clamp(y, 0, 1); // pale luminous tips, deeper base
     colors.push(tip, tip, tip);
   }
   g.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
@@ -340,9 +453,24 @@ let bloomP = 0;                // eased bloom progress (0 = bud, 1 = open)
 let camP = 0;                  // eased camera progress (0 = top, 1 = bottom)
 const BLOOM_END = 0.4;         // fraction of scroll used for blooming
 const hintEl = document.getElementById("hint");
+const gradeEl = document.getElementById("grade");
 const lerp = (a, b, t) => a + (b - a) * t;
 
-function buildLotus() {
+function makeGlowTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d");
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, "rgba(255,255,255,1)");
+  grd.addColorStop(0.3, "rgba(255,242,205,0.6)");
+  grd.addColorStop(1, "rgba(255,242,205,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+
+// builds a lotus; pass reflection=true for a faded, transparent mirror copy
+function buildLotus(petalArr, reflection) {
   const group = new THREE.Group();
   const petalGeo = makePetalGeometry();
   const deg = Math.PI / 180;
@@ -354,35 +482,53 @@ function buildLotus() {
   ];
   for (let li = 0; li < layers.length; li++) {
     const L = layers[li];
-    const mat = new THREE.MeshStandardMaterial({
-      color: L.color, roughness: 0.5, metalness: 0.0,
-      emissive: 0x40121f, emissiveIntensity: 0.22,
-      vertexColors: true, side: THREE.DoubleSide,
-    });
     const step = (Math.PI * 2) / L.count;
     const off = li * step * 0.5;
     for (let j = 0; j < L.count; j++) {
       const pivot = new THREE.Group();
       pivot.rotation.y = off + j * step;
+      // per-petal material -> subtle colour/shade variation + translucency
+      const col = new THREE.Color(L.color).offsetHSL(
+        (Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.05
+      );
+      const mat = new THREE.MeshStandardMaterial({
+        color: col,
+        roughness: 0.4,
+        metalness: 0.0,
+        emissive: new THREE.Color(L.color).multiplyScalar(0.35),
+        emissiveIntensity: reflection ? 0.12 : 0.45, // glow ~ translucency
+        vertexColors: true,
+        side: THREE.DoubleSide,
+        transparent: !!reflection,
+        opacity: reflection ? 0 : 1,
+        depthWrite: !reflection,
+      });
       const m = new THREE.Mesh(petalGeo, mat);
-      m.scale.set(L.wid, L.len, L.wid);
-      const openX = -(Math.PI / 2 - L.tilt * deg);
+      // per-petal size/curl variation so they're not identical
+      m.scale.set(L.wid * (0.94 + Math.random() * 0.12), L.len * (0.9 + Math.random() * 0.18), L.wid);
+      const openX = -(Math.PI / 2 - (L.tilt + (Math.random() - 0.5) * 6) * deg);
       const closedX = -(Math.PI / 2 - CLOSED_TILT * deg);
-      m.rotation.x = closedX;          // start closed (bud)
+      m.rotation.x = closedX;                  // start closed (bud)
+      m.rotation.z = (Math.random() - 0.5) * 4 * deg;
       m.position.y = L.y;
       pivot.add(m);
       group.add(pivot);
-      // outer layers (lower li) start opening earlier in the scroll
-      petalList.push({ m, openX, closedX, sf: li * 0.16 });
+      petalArr.push({ m, openX, closedX, sf: li * 0.16 + Math.random() * 0.04 });
     }
   }
   const pod = new THREE.Mesh(
     new THREE.CylinderGeometry(0.34, 0.27, 0.3, 26),
-    new THREE.MeshStandardMaterial({ color: 0xe6d25c, roughness: 0.5, emissive: 0x2a2406, emissiveIntensity: 0.3 })
+    new THREE.MeshStandardMaterial({
+      color: 0xe6d25c, roughness: 0.5, emissive: 0x2a2406, emissiveIntensity: 0.3,
+      transparent: !!reflection, opacity: reflection ? 0 : 1, depthWrite: !reflection,
+    })
   );
   pod.position.y = 0.18;
   group.add(pod);
-  const stamenMat = new THREE.MeshStandardMaterial({ color: 0xf8e69a, emissive: 0x3a2e08, emissiveIntensity: 0.4, roughness: 0.4 });
+  const stamenMat = new THREE.MeshStandardMaterial({
+    color: 0xf8e69a, emissive: 0x6a5410, emissiveIntensity: reflection ? 0.3 : 0.95, roughness: 0.4,
+    transparent: !!reflection, opacity: reflection ? 0 : 1, depthWrite: !reflection,
+  });
   for (let j = 0; j < 22; j++) {
     const a = (j / 22) * Math.PI * 2;
     const sm = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), stamenMat);
@@ -392,8 +538,23 @@ function buildLotus() {
   return group;
 }
 
-const lotus = buildLotus();
+const reflPetals = [];
+const lotus = buildLotus(petalList, false);
 scene.add(lotus);
+
+// mirrored, faded reflection of the lotus (eases in toward the side view)
+const lotusRefl = buildLotus(reflPetals, true);
+lotusRefl.renderOrder = -1;
+scene.add(lotusRefl);
+
+// soft additive glow at the flower's heart (grows as it blooms)
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: makeGlowTexture(), color: 0xfff2c8, transparent: true,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+glow.position.set(0, 0.34, 0);
+glow.scale.setScalar(1.6);
+lotus.add(glow);
 
 // soft contact shadow on the water (semi-transparent dark disc)
 const shadow = new THREE.Mesh(
@@ -516,6 +677,7 @@ window.addEventListener("resize", () => {
   waterRebuild();
   backdropResize();
   raysResize();
+  lifeResize();
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -531,6 +693,70 @@ function loop(now) {
   waterStep();
   waterRefract();
   wctx.putImageData(wOut, 0, 0);
+
+  // sky reflection: a soft sky-tint near the top of the water
+  const sref = wctx.createLinearGradient(0, 0, 0, WH * 0.34);
+  sref.addColorStop(0, "rgba(150,212,236,0.30)");
+  sref.addColorStop(1, "rgba(150,212,236,0)");
+  wctx.fillStyle = sref;
+  wctx.fillRect(0, 0, WW, WH * 0.34);
+
+  wctx.globalCompositeOperation = "lighter";
+
+  // sun glitter path: a widening trail of glints under the sun's column
+  const gx = WW * 0.74; // matches the sun's horizontal position in the sky
+  for (let k = 0; k < 70; k++) {
+    const yy = (Math.random() * WH) | 0;
+    const vf = yy / WH;                      // 0 horizon -> 1 foreground
+    const spread = WW * (0.02 + 0.22 * vf);  // widens toward the foreground
+    const xx = (gx + (Math.random() - 0.5) * 2 * spread) | 0;
+    if (xx < 0 || xx >= WW) continue;
+    const crest = waveRow[xx] + waveCol[yy];
+    if (crest <= 2.6) continue;
+    const near = 1 - Math.min(1, Math.abs(xx - gx) / (spread + 1));
+    const a = clamp((crest - 2.6) / 6, 0, 1) * (0.22 + 0.55 * near);
+    if (a < 0.02) continue;
+    const r = 1 + Math.random() * 2.6;
+    const sg = wctx.createRadialGradient(xx, yy, 0, xx, yy, r);
+    sg.addColorStop(0, `rgba(255,250,232,${a.toFixed(3)})`);
+    sg.addColorStop(1, "rgba(255,250,232,0)");
+    wctx.fillStyle = sg;
+    wctx.beginPath(); wctx.arc(xx, yy, r, 0, Math.PI * 2); wctx.fill();
+  }
+
+  // whitecaps / foam on the biggest crests (more in the foreground & side view)
+  for (let k = 0; k < 46; k++) {
+    const xx = (Math.random() * WW) | 0;
+    const yy = (Math.random() * WH) | 0;
+    const vf = yy / WH;
+    const crest = waveRow[xx] + waveCol[yy];
+    const thresh = 6.2 - vf * 1.6;
+    if (crest <= thresh) continue;
+    const a = clamp((crest - thresh) / 4, 0, 1) * (0.16 + 0.32 * vf) * (0.45 + 0.55 * camP);
+    if (a < 0.02) continue;
+    const r = 1.5 + Math.random() * 3.5 * (0.5 + vf);
+    const fg = wctx.createRadialGradient(xx, yy, 0, xx, yy, r);
+    fg.addColorStop(0, `rgba(255,255,255,${a.toFixed(3)})`);
+    fg.addColorStop(1, "rgba(255,255,255,0)");
+    wctx.fillStyle = fg;
+    wctx.beginPath(); wctx.arc(xx, yy, r, 0, Math.PI * 2); wctx.fill();
+  }
+  wctx.globalCompositeOperation = "source-over";
+
+  // golden-hour warm wash over the water (grows toward the side view)
+  if (camP > 0.02) {
+    wctx.fillStyle = `rgba(255,168,92,${(0.13 * camP).toFixed(3)})`;
+    wctx.fillRect(0, 0, WW, WH);
+  }
+
+  // crisp, bright horizon line where the water meets the sky (side view only)
+  if (camP > 0.04) {
+    const hg = wctx.createLinearGradient(0, 0, 0, 10);
+    hg.addColorStop(0, `rgba(248,226,196,${(0.6 * camP).toFixed(2)})`);
+    hg.addColorStop(1, "rgba(248,226,196,0)");
+    wctx.fillStyle = hg;
+    wctx.fillRect(0, 0, WW, 10);
+  }
 
   // scroll drives two phases: bloom first, then camera angle top->side->bottom
   const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
@@ -549,9 +775,26 @@ function loop(now) {
   }
   overall = petalList.length ? overall / petalList.length : 0;
 
+  // mirror the same bloom onto the reflection's petals
+  for (const pe of reflPetals) {
+    const lp = clamp((bloomP - pe.sf) / 0.55, 0, 1);
+    const e = 1 - Math.pow(1 - lp, 3);
+    pe.m.rotation.x = pe.closedX + (pe.openX - pe.closedX) * e;
+  }
+
   // lotus: gentle bob, near-top 3/4 view
   lotus.scale.setScalar(0.82 + 0.18 * overall);
   lotus.position.y = 0.18 + Math.sin(t * 1.1) * 0.05;
+
+  // glowing heart grows with the bloom
+  glow.material.opacity = 0.16 + 0.5 * overall;
+  glow.scale.setScalar(1.3 + overall * 1.7);
+
+  // reflection: mirror under the surface, shimmer, fade in toward side view
+  lotusRefl.position.set(Math.sin(t * 2.0) * 0.03, -lotus.position.y, 0);
+  lotusRefl.scale.set(lotus.scale.x, -lotus.scale.y, lotus.scale.z);
+  const ro = clamp(camP, 0, 1) * 0.4;
+  lotusRefl.traverse((o) => { if (o.material) o.material.opacity = ro; });
 
   // pads gently bob and rock on the water
   for (const pd of pads) {
@@ -568,6 +811,15 @@ function loop(now) {
   const hd = R * Math.cos(elev);
   camera.position.set(hd * Math.sin(az), targetY + R * Math.sin(elev), hd * Math.cos(az));
   camera.lookAt(0, targetY, 0);
+
+  // golden hour: warm the lights + color grade as the camera lowers
+  const gh = clamp(camP, 0, 1);
+  sun.color.copy(SUN_DAY).lerp(SUN_SET, gh);
+  sun.intensity = lerp(1.5, 1.15, gh);
+  sun.position.set(7, lerp(10, 4.5, gh), 4);
+  hemi.color.copy(HEMI_DAY).lerp(HEMI_SET, gh);
+  if (gradeEl) gradeEl.style.opacity = (gh * 0.9).toFixed(3);
+
   renderer.render(scene, camera);
 
   // water positioning across the orbit:
@@ -588,7 +840,8 @@ function loop(now) {
   waterCanvas.style.top = (waterTop * 100).toFixed(2) + "%";
   waterCanvas.style.height = ((waterBot - waterTop) * 100).toFixed(2) + "%";
 
-  drawBackdrop(uw);
+  drawBackdrop(uw, gh);
+  drawLife(t); // drifting petals + dragonflies
 
   // aim the rays' entry point at the widest gap between the leaves/lotus
   // (project their world positions to screen-x, then find the largest gap)
