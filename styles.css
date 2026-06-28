@@ -108,6 +108,40 @@ body {
   mix-blend-mode: screen; /* beams add light to the scene */
 }
 
+.life-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 4;
+  pointer-events: none;
+  display: block;
+}
+
+/* golden-hour warm wash (opacity driven by scroll) */
+.grade {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(to top,
+    rgba(255, 140, 60, 0.55),
+    rgba(255, 196, 120, 0.18) 42%,
+    rgba(120, 140, 200, 0.10));
+  mix-blend-mode: soft-light;
+}
+
+/* subtle permanent vignette to focus the eye */
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center,
+    rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.28));
+}
+
 .lotus-layer { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 .lotus-layer canvas {
   position: fixed;
